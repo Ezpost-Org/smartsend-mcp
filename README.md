@@ -67,7 +67,7 @@ connected to. `SMARTSEND_API_URL` overrides the API base URL (rarely needed).
 **Read** — `get_organization`, `list_tags`, `list_lists`, `list_bots`,
 `list_templates`, `get_template_params`, `get_bot_template_params`,
 `list_custom_fields`, `list_users`, `get_customer_by_phone`,
-`search_customers`
+`search_customers`, `list_messages` (chat history, paged)
 
 **Messaging** — `send_text`, `send_template`, `schedule_template`
 (`dd/mm/yyyy HH:mm` Israel time or ISO 8601), `clear_scheduled`, `send_flow`,
