@@ -208,6 +208,29 @@ export const tools: ToolDefinition[] = [
     }),
     call: (input) => ({ method: 'GET', path: `/customers/search${query(input)}` }),
   },
+  {
+    name: 'list_messages',
+    title: 'Read conversation messages',
+    description:
+      'Read a customer\'s WhatsApp chat history by phone. Returns the most recent messages in chronological order, each marked inbound (from the customer) or outbound (sent by an agent, a bot or the API), with text, media references and timestamps. When hasMore is true, pass the returned nextBefore as "before" to page further back. Returns found:false when the phone has no conversation.',
+    readOnly: true,
+    destructive: false,
+    inputSchema: z.object({
+      phone,
+      limit: z
+        .number()
+        .int()
+        .min(1)
+        .max(200)
+        .optional()
+        .describe('How many recent messages to return (default 50).'),
+      before: z
+        .string()
+        .optional()
+        .describe('ISO datetime; only messages strictly older than this. Use nextBefore from the previous page.'),
+    }),
+    call: (input) => ({ method: 'GET', path: `/messages/list${query(input)}` }),
+  },
 
   // ------------------------------------------------------------- messaging
   {

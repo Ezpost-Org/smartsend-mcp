@@ -115,4 +115,19 @@ describe('wire mapping', () => {
     expect(() => def.inputSchema.parse({ limit: 0 })).toThrow();
     expect(() => def.inputSchema.parse({ limit: 501 })).toThrow();
   });
+
+  it('list_messages is read-only and pages with before', () => {
+    const def = tool('list_messages');
+    expect(def.readOnly).toBe(true);
+    const input = def.inputSchema.parse({
+      phone: '972501234567',
+      limit: 20,
+      before: '2026-10-17T08:00:00.000Z',
+    });
+    expect(def.call(input)).toEqual({
+      method: 'GET',
+      path: '/messages/list?phone=972501234567&limit=20&before=2026-10-17T08%3A00%3A00.000Z',
+    });
+    expect(() => def.inputSchema.parse({ phone: '972501234567', limit: 201 })).toThrow();
+  });
 });
