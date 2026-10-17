@@ -29,6 +29,20 @@ Claude Code:
 claude mcp add --transport http smartsend https://gateway.smartsend.co.il/mcp --header "Authorization: Bearer ss_live_..."
 ```
 
+### Add as a Claude connector (claude.ai / Claude Desktop)
+
+1. **Settings → Connectors → Add custom connector**
+2. URL: `https://gateway.smartsend.co.il/mcp`
+3. Under **Request headers**, add a header named `Authorization` with the value
+   `Bearer ss_live_...` (the word `Bearer`, a space, then your key).
+
+Request-header authentication is currently an Anthropic beta — if you don't
+see the *Request headers* section in the dialog, your Claude organization
+doesn't have it yet; connect through Claude Code (above) in the meantime. On
+Team/Enterprise plans the connector is added by the workspace Owner, then each
+member enables it. Do not put the key in the URL — the MCP spec forbids
+credentials in query strings.
+
 ## Or run it locally (stdio)
 
 Requires Node.js 20+.
