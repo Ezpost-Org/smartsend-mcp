@@ -5,7 +5,9 @@
 // recover on its own - so failures are passed through as text rather than
 // being reshaped into codes.
 
-const DEFAULT_BASE = 'https://gateway.smartsend.co.il/api/integrations/make';
+// No /api prefix here: the smartsend-server ingress rewrites /(.*) to /api/$1,
+// so the app-side /api/integrations/make is reached as /integrations/make.
+const DEFAULT_BASE = 'https://smartsend-server.otherwise.co.il/integrations/make';
 
 export type MakeEnvelope = {
   success: boolean;

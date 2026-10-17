@@ -30,7 +30,19 @@ const client = createSmartSendClient({
     : {}),
 });
 
-const server = new McpServer({ name: 'smartsend', version: '0.1.0' });
+const server = new McpServer({
+  name: 'smartsend',
+  title: 'SmartSend',
+  version: '0.1.0',
+  icons: [
+    {
+      src: 'https://app.smartsend.co.il/icon.png',
+      mimeType: 'image/png',
+      sizes: ['385x384'],
+    },
+  ],
+  websiteUrl: 'https://app.smartsend.co.il',
+});
 
 for (const tool of tools) {
   server.registerTool(
