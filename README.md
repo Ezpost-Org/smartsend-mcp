@@ -4,19 +4,36 @@ An [MCP](https://modelcontextprotocol.io) server for the
 [SmartSend](https://smartsend.co.il) REST API. Connect it to Claude (or any
 MCP client) and let a model operate your SmartSend workspace: look up and
 search customers, manage tags, lists and custom fields, send and schedule
-WhatsApp template messages, trigger bots, and more — 31 tools in total.
+WhatsApp template messages, trigger bots, and more — 32 tools in total.
 
 One API key = one organization. Every tool is scoped by the key; there is no
 way to reach another organization's data.
 
 ## Getting an API key
 
-In SmartSend: **Settings → API keys** → create a key. It looks like
-`ss_live_...`.
+In SmartSend: **Settings → Integrations → API keys → Create key**. It looks
+like `ss_live_...` and is shown once.
 
-## Use the hosted endpoint (nothing to install)
+## Add as a Claude connector (claude.ai, Claude Desktop, Claude mobile)
 
-Point any MCP client (Streamable HTTP transport) at:
+1. **Settings → Connectors → Add custom connector**
+2. Name `SmartSend`, URL `https://smartsend-server.otherwise.co.il/mcp`, leave
+   *Advanced settings* empty → **Add**.
+3. Click **Connect**. A SmartSend approval page opens: paste your `ss_live_...`
+   key and approve. You're sent back to Claude, connected.
+4. In a chat, open the tools menu (**+**) → **Connectors** and switch SmartSend on.
+
+On Team/Enterprise plans an Owner adds the connector once for the
+organization; each member then clicks **Connect** and approves with their own
+key.
+
+Under the hood this is standard MCP authorization (OAuth 2.1 + PKCE with
+dynamic client registration). The tokens Claude receives wrap your key, so
+deleting the key in SmartSend disconnects every connector that used it.
+
+## Use the hosted endpoint from other clients
+
+Any MCP client with Streamable HTTP can send the key directly:
 
 ```
 URL:    https://smartsend-server.otherwise.co.il/mcp
@@ -29,19 +46,9 @@ Claude Code:
 claude mcp add --transport http smartsend https://smartsend-server.otherwise.co.il/mcp --header "Authorization: Bearer ss_live_..."
 ```
 
-### Add as a Claude connector (claude.ai / Claude Desktop)
-
-1. **Settings → Connectors → Add custom connector**
-2. URL: `https://smartsend-server.otherwise.co.il/mcp`
-3. Under **Request headers**, add a header named `Authorization` with the value
-   `Bearer ss_live_...` (the word `Bearer`, a space, then your key).
-
-Request-header authentication is currently an Anthropic beta — if you don't
-see the *Request headers* section in the dialog, your Claude organization
-doesn't have it yet; connect through Claude Code (above) in the meantime. On
-Team/Enterprise plans the connector is added by the workspace Owner, then each
-member enables it. Do not put the key in the URL — the MCP spec forbids
-credentials in query strings.
+(Or leave out `--header` and run `/mcp` inside Claude Code to approve in the
+browser, same as claude.ai.) Do not put the key in the URL: the MCP spec
+forbids credentials in query strings.
 
 ## Or run it locally (stdio)
 
