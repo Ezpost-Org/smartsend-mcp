@@ -61,6 +61,120 @@ const body = (input: ToolInput): Record<string, unknown> => {
   return out;
 };
 
+// --- template submission ----------------------------------------------------
+// create_template takes a flat, model-friendly shape and builds the Meta
+// components exactly the way the SmartSend template builder does (lower-case
+// component types, examples in body_text/header_text), so a template made
+// through MCP is indistinguishable from one made in the app.
+
+const placeholderCount = (text: string): number => {
+  const positions = new Set<number>();
+  for (const match of text.matchAll(/\{\{\s*(\d+)\s*\}\}/g)) positions.add(Number(match[1]));
+  const sorted = [...positions].sort((a, b) => a - b);
+  sorted.forEach((position, index) => {
+    if (position !== index + 1) {
+      throw new Error(
+        `Placeholders must be numbered {{1}}, {{2}}, ... with no gaps; found {{${position}}} where {{${index + 1}}} was expected.`,
+      );
+    }
+  });
+  return sorted.length;
+};
+
+const templateButton = z.discriminatedUnion('type', [
+  z.object({
+    type: z.literal('quick_reply'),
+    text: z.string().min(1).max(25).describe('Button label, up to 25 characters.'),
+  }),
+  z.object({
+    type: z.literal('url'),
+    text: z.string().min(1).max(25),
+    url: z
+      .string()
+      .url()
+      .describe('https URL. May end with {{1}} for a per-recipient suffix (filled at send time via urlButtonParams).'),
+    example: z
+      .string()
+      .url()
+      .optional()
+      .describe('Required when url ends with {{1}}: the full URL with a sample value, e.g. https://shop.example/orders/1234.'),
+  }),
+  z.object({
+    type: z.literal('phone'),
+    text: z.string().min(1).max(25),
+    phoneNumber: z.string().min(5).describe('International format, e.g. +972501234567.'),
+  }),
+]);
+
+type TemplateButton = z.infer<typeof templateButton>;
+
+function buildTemplateComponents(input: ToolInput): unknown[] {
+  const components: Record<string, unknown>[] = [];
+  const header = input.header as
+    | { type: 'text'; text: string; example?: string }
+    | { type: 'image' | 'video' | 'document'; mediaUrl: string }
+    | undefined;
+  if (header !== undefined) {
+    if (header.type === 'text') {
+      const count = placeholderCount(header.text);
+      if (count > 1) throw new Error('A text header can hold at most one placeholder, {{1}}.');
+      if (count === 1 && header.example === undefined) {
+        throw new Error('The header uses {{1}}, so header.example (a sample value) is required.');
+      }
+      components.push({
+        type: 'header',
+        format: 'text',
+        text: header.text,
+        ...(count === 1 ? { example: { header_text: [header.example] } } : {}),
+      });
+    } else {
+      components.push({ type: 'header', format: header.type });
+    }
+  }
+
+  const bodyText = String(input.body);
+  const variables = (input.variables as { example: string; name?: string }[] | undefined) ?? [];
+  const count = placeholderCount(bodyText);
+  if (variables.length !== count) {
+    throw new Error(
+      `The body has ${count} placeholder(s) but ${variables.length} variable(s) were given - pass one { example } per placeholder, in order.`,
+    );
+  }
+  components.push({
+    type: 'body',
+    text: bodyText,
+    ...(count > 0 ? { example: { body_text: [variables.map((v) => v.example)] } } : {}),
+  });
+
+  if (typeof input.footer === 'string' && input.footer.length > 0) {
+    components.push({ type: 'footer', text: input.footer });
+  }
+
+  const buttons = (input.buttons as TemplateButton[] | undefined) ?? [];
+  if (buttons.length > 0) {
+    components.push({
+      type: 'buttons',
+      buttons: buttons.map((button) => {
+        if (button.type === 'quick_reply') return { type: 'QUICK_REPLY', text: button.text };
+        if (button.type === 'phone') {
+          return { type: 'PHONE_NUMBER', text: button.text, phone_number: button.phoneNumber };
+        }
+        const dynamic = /\{\{\s*1\s*\}\}$/.test(button.url);
+        if (dynamic && button.example === undefined) {
+          throw new Error(`The "${button.text}" button URL ends with {{1}}, so its example (a full sample URL) is required.`);
+        }
+        return {
+          type: 'URL',
+          text: button.text,
+          url: button.url,
+          ...(dynamic ? { example: [button.example] } : {}),
+        };
+      }),
+    });
+  }
+  return components;
+}
+
 export const tools: ToolDefinition[] = [
   // ----------------------------------------------------------------- reads
   {
@@ -124,6 +238,100 @@ export const tools: ToolDefinition[] = [
       languageCode: z.string().optional().describe('Defaults to the template\'s own language.'),
     }),
     call: (input) => ({ method: 'GET', path: `/rpc/template-params${query(input)}` }),
+  },
+  {
+    name: 'create_template',
+    title: 'Submit a WhatsApp template for approval',
+    description:
+      'Create a new WhatsApp message template and submit it to Meta for review. The template is NOT usable right away: it starts as PENDING and Meta usually approves or rejects it within minutes (sometimes up to 24h) - follow it with get_template_status, then send it with send_template once APPROVED. Body placeholders are numbered {{1}}, {{2}}, ... and each needs a sample value in `variables`. Show the user the final text and get their OK before calling: a rejected name cannot be reused for a while.',
+    readOnly: false,
+    destructive: false,
+    inputSchema: z.object({
+      name: z
+        .string()
+        .regex(/^[a-z0-9_]{1,512}$/)
+        .describe('Unique template id sent to Meta: lowercase English letters, digits and underscores only, e.g. "order_ready_reminder". Use `nickname` for a Hebrew display name.'),
+      category: z
+        .enum(['MARKETING', 'UTILITY'])
+        .describe('UTILITY for transactional updates the customer expects (order, appointment, account); MARKETING for promotions, offers and announcements. Meta re-categorizes templates that pick the wrong one.'),
+      language: z
+        .string()
+        .min(2)
+        .default('he')
+        .describe('Template language code: "he" (default), "en_US", "ar", "ru", ...'),
+      body: z
+        .string()
+        .min(1)
+        .max(1024)
+        .describe('Message text, up to 1024 characters. WhatsApp formatting works (*bold*, _italic_). Placeholders {{1}}, {{2}}, ... are filled per recipient at send time; do not start or end the body with a placeholder.'),
+      variables: z
+        .array(
+          z.object({
+            example: z.string().min(1).describe('Realistic sample value Meta reviews, e.g. "דנה".'),
+            name: z
+              .string()
+              .regex(/^[0-9A-Za-z\u0590-\u05FF _-]{1,60}$/)
+              .optional()
+              .describe('Friendly name shown in SmartSend instead of the number, e.g. "שם פרטי".'),
+          }),
+        )
+        .optional()
+        .describe('One entry per body placeholder, in order ({{1}} first).'),
+      header: z
+        .discriminatedUnion('type', [
+          z.object({
+            type: z.literal('text'),
+            text: z.string().min(1).max(60).describe('Up to 60 characters; at most one placeholder {{1}}.'),
+            example: z.string().optional().describe('Sample value for {{1}} when the header uses it.'),
+          }),
+          z.object({
+            type: z.enum(['image', 'video', 'document']),
+            mediaUrl: z
+              .string()
+              .url()
+              .describe('Public URL of a sample file Meta reviews (JPG/PNG image, MP4 video, PDF document). Also becomes the default header media when sending.'),
+          }),
+        ])
+        .optional(),
+      footer: z.string().max(60).optional().describe('Small grey line under the body, up to 60 characters, no placeholders.'),
+      buttons: z
+        .array(templateButton)
+        .max(10)
+        .optional()
+        .describe('Up to 10 buttons: quick replies, links (max 2) and one phone call button.'),
+      nickname: z.string().max(100).optional().describe('Display name inside SmartSend (Hebrew is fine).'),
+    }),
+    call: (input) => {
+      const variables = (input.variables as { example: string; name?: string }[] | undefined) ?? [];
+      const names = variables.map((v) => v.name);
+      const header = input.header as { type: string; mediaUrl?: string } | undefined;
+      return {
+        method: 'POST',
+        path: '/templates/create',
+        body: body({
+          name: input.name,
+          category: input.category,
+          language: input.language,
+          components: buildTemplateComponents(input),
+          nickname: input.nickname,
+          headerMediaUrl: header?.mediaUrl,
+          parameterNames: names.length > 0 && names.every((n) => n !== undefined) ? names : undefined,
+          createdByName: 'MCP',
+        }),
+      };
+    },
+  },
+  {
+    name: 'get_template_status',
+    title: 'Check a template\'s review status',
+    description:
+      'Look up the Meta review status of templates with this name: PENDING, APPROVED, REJECTED (with Meta\'s reason when given), PAUSED or DISABLED. Use after create_template; list_templates only shows approved ones.',
+    readOnly: true,
+    destructive: false,
+    inputSchema: z.object({
+      name: z.string().min(1).describe('The template name passed to create_template.'),
+    }),
+    call: (input) => ({ method: 'GET', path: `/templates/status${query(input)}` }),
   },
   {
     name: 'get_bot_template_params',

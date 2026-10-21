@@ -4,7 +4,7 @@ An [MCP](https://modelcontextprotocol.io) server for the
 [SmartSend](https://smartsend.co.il) REST API. Connect it to Claude (or any
 MCP client) and let a model operate your SmartSend workspace: look up and
 search customers, manage tags, lists and custom fields, send and schedule
-WhatsApp template messages, trigger bots, and more — 32 tools in total.
+WhatsApp template messages, trigger bots, and more — 34 tools in total.
 
 One API key = one organization. Every tool is scoped by the key; there is no
 way to reach another organization's data.
@@ -89,6 +89,11 @@ connected to. `SMARTSEND_API_URL` overrides the API base URL (rarely needed).
 `list_templates`, `get_template_params`, `get_bot_template_params`,
 `list_custom_fields`, `list_users`, `get_customer_by_phone`,
 `search_customers`, `list_messages` (chat history, paged)
+
+**Templates** — `create_template` (body with `{{1}}` placeholders + samples,
+text or media header, footer, quick-reply / link / phone buttons; submitted to
+Meta for review), `get_template_status` (PENDING → APPROVED / REJECTED with
+Meta's reason)
 
 **Messaging** — `send_text`, `send_template`, `schedule_template`
 (`dd/mm/yyyy HH:mm` Israel time or ISO 8601), `clear_scheduled`, `send_flow`,

@@ -131,3 +131,102 @@ describe('wire mapping', () => {
     expect(() => def.inputSchema.parse({ phone: '972501234567', limit: 201 })).toThrow();
   });
 });
+
+// create_template builds Meta components the way the SmartSend template builder does
+// in the web app: lower-case component types,
+// upper-case button types, examples in body_text / header_text.
+describe('create_template', () => {
+  const create = tool('create_template');
+  const build = (input: Record<string, unknown>) => {
+    const parsed = create.inputSchema.parse({ name: 'order_ready', category: 'UTILITY', ...input });
+    return create.call(parsed) as { method: string; path: string; body: Record<string, unknown> };
+  };
+
+  it('posts a full template to the lane create route', () => {
+    const call = build({
+      body: 'שלום {{1}}, ההזמנה {{2}} מוכנה לאיסוף.',
+      variables: [{ example: 'דנה', name: 'שם פרטי' }, { example: '1234', name: 'מספר הזמנה' }],
+      header: { type: 'text', text: 'ההזמנה מוכנה' },
+      footer: 'SmartSend',
+      buttons: [
+        { type: 'quick_reply', text: 'תודה' },
+        { type: 'url', text: 'מעקב', url: 'https://shop.example/orders/{{1}}', example: 'https://shop.example/orders/1234' },
+        { type: 'phone', text: 'התקשרו', phoneNumber: '+972501234567' },
+      ],
+      nickname: 'הזמנה מוכנה',
+    });
+    expect(call.method).toBe('POST');
+    expect(call.path).toBe('/templates/create');
+    expect(call.body).toMatchObject({
+      name: 'order_ready',
+      category: 'UTILITY',
+      language: 'he',
+      nickname: 'הזמנה מוכנה',
+      parameterNames: ['שם פרטי', 'מספר הזמנה'],
+      createdByName: 'MCP',
+    });
+    expect(call.body.components).toEqual([
+      { type: 'header', format: 'text', text: 'ההזמנה מוכנה' },
+      {
+        type: 'body',
+        text: 'שלום {{1}}, ההזמנה {{2}} מוכנה לאיסוף.',
+        example: { body_text: [['דנה', '1234']] },
+      },
+      { type: 'footer', text: 'SmartSend' },
+      {
+        type: 'buttons',
+        buttons: [
+          { type: 'QUICK_REPLY', text: 'תודה' },
+          {
+            type: 'URL',
+            text: 'מעקב',
+            url: 'https://shop.example/orders/{{1}}',
+            example: ['https://shop.example/orders/1234'],
+          },
+          { type: 'PHONE_NUMBER', text: 'התקשרו', phone_number: '+972501234567' },
+        ],
+      },
+    ]);
+  });
+
+  it('sends a media header as a format plus headerMediaUrl for the lane to upload', () => {
+    const call = build({
+      body: 'מבצע סוף עונה!',
+      header: { type: 'image', mediaUrl: 'https://cdn.example/sale.jpg' },
+    });
+    expect(call.body.headerMediaUrl).toBe('https://cdn.example/sale.jpg');
+    expect(call.body.components).toEqual([
+      { type: 'header', format: 'image' },
+      { type: 'body', text: 'מבצע סוף עונה!' },
+    ]);
+    expect(call.body).not.toHaveProperty('parameterNames');
+  });
+
+  it('rejects names Meta would refuse', () => {
+    expect(() => build({ name: 'הזמנה', body: 'x' })).toThrow();
+    expect(() => build({ name: 'Order-Ready', body: 'x' })).toThrow();
+  });
+
+  it('demands one example per placeholder, numbered without gaps', () => {
+    expect(() => build({ body: 'שלום {{1}}' })).toThrow(/1 placeholder/);
+    expect(() => build({ body: 'שלום {{1}} {{3}}', variables: [{ example: 'a' }, { example: 'b' }] })).toThrow(
+      /no gaps/,
+    );
+  });
+
+  it('demands a sample URL for a dynamic link button and a sample for a header placeholder', () => {
+    expect(() =>
+      build({ body: 'x', buttons: [{ type: 'url', text: 'מעקב', url: 'https://shop.example/o/{{1}}' }] }),
+    ).toThrow(/example/);
+    expect(() => build({ body: 'x', header: { type: 'text', text: 'שלום {{1}}' } })).toThrow(/header.example/);
+  });
+});
+
+describe('get_template_status', () => {
+  it('reads the lane status route by name', () => {
+    expect(tool('get_template_status').call({ name: 'order_ready' })).toEqual({
+      method: 'GET',
+      path: '/templates/status?name=order_ready',
+    });
+  });
+});
